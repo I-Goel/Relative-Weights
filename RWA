@@ -1,0 +1,84 @@
+"""
+Importing the necessary libraries.
+"""
+
+
+import pandas as pd
+import numpy as np
+import sys
+
+"""
+This is the main method of the script.
+It takes in a JSON string with the data as a system argument and runs relative weights analysis on it.
+"""
+def main():
+    #Taking in a JSON string with the data as a system argument
+    series = sys.argv[1]
+    
+    #Reading it into a dataframe
+    dataframe = pd.read_json(series)
+    
+    #Calling the RWA method
+    relative_weights = RWA(dataframe)
+    
+    #Making an output dataframe with the indices as the category names and one column containing the relative weights
+    output_df = pd.DataFrame(index = dataframe.columns[0:-1], columns = ['Relative Weight'])
+    
+    #We assign the relative weights and sort in descending order
+    output_df['Relative Weight'] = relative_weights
+    output_df = output_df.sort_values('Relative Weight', ascending = False)
+
+    #We convert the output dataframe into JSON and return it 
+    output_json = output_df.to_json()
+    return output_json
+    
+
+"""
+This methods conducts the actual Relative Weights Analysis.
+It takes in a dataframe where the columns are the categories being analysed and the rows contain data.
+ASSUMPTION - The last (rightmost) column is the dependent variable.
+It returns a list with the relative weights in order of the columns.
+"""
+
+def RWA(dataframe):
+    #Correlation Matrix
+    corr_matrix = dataframe.corr()
+    
+    #Matrices
+    ind_ind = corr_matrix.iloc[0:-1, 0:-1].values
+    ind_dep = corr_matrix.iloc[0:-1, [-1]].values
+    
+    #The eigenvalues and eigenvectors
+    eigenvalues, eigenvectors = np.linalg.eig(ind_ind)
+    eigenvalues = eigenvalues**0.5
+    
+    #Diagonal matrix of eigenvalues
+    diagonal = np.diag(eigenvalues)
+    
+    #Transposing the eigenvectors
+    eigenvect_t = np.transpose(eigenvectors)
+    
+    #Lambda matrix and its square
+    lambda_matrix = np.dot(eigenvectors, np.dot(diagonal, eigenvect_t))
+    lam_mat_sq = np.square(lambda_matrix)
+    
+    #The partial effect matrix
+    partial_effect = np.dot(np.linalg.inv(lambda_matrix), ind_dep)
+    
+    #Calculating the r-squared by the sum of the squares of the partial effect matrix
+    r_squared = 0
+    for i in partial_effect:
+        r_squared += i*i
+    
+    #Calculation of the Raw Weights
+    partial_effect = partial_effect**2
+    raw_weight = np.dot(lam_mat_sq, partial_effect)
+    
+    #Finding and returning the relative weights
+    relative_weights = [raw_weight[i]*100/r_squared for i in range(len(raw_weight))]
+    relative_weights = [relative_weights[i][0] for i in range(len(relative_weights))]
+    return relative_weights
+
+#Starts the processs
+if __name__ == "__main__":
+    main()
